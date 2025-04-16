@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "271943753255",
+    "project_id": "sugar-pop-45ac1",
+    "storage_bucket": "sugar-pop-45ac1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:271943753255:android:437394f813b2d75f10b802",
+        "android_client_info": {
+          "package_name": "com.example.diabetes"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBufJyGeOnjHXo9x20qtOGfOMFNK7EAf2I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

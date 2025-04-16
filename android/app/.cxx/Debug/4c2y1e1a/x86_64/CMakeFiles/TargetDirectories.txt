@@ -1,0 +1,2 @@
+F:/Flutter/diabetes/android/app/.cxx/Debug/4c2y1e1a/x86_64/CMakeFiles/edit_cache.dir
+F:/Flutter/diabetes/android/app/.cxx/Debug/4c2y1e1a/x86_64/CMakeFiles/rebuild_cache.dir
