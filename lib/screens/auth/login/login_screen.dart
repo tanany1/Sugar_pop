@@ -1,9 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../utils/app_colors.dart';
 import '../../../utils/dialog_utils.dart';
+import '../../../utils/providers/user_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +23,39 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    // Check if user is already logged in
+    checkUserLoggedIn();
+  }
+
+  Future<void> checkUserLoggedIn() async {
+    // Get shared preferences instance
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    // Check if user is logged in (stored as a boolean)
+    final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+    if (isLoggedIn) {
+      // Get stored credentials if needed
+      final String? email = prefs.getString('userEmail');
+      final String? password = prefs.getString('userPassword');
+
+      if (email != null && password != null) {
+        // Optionally restore credentials to provider
+        Provider.of<UserProvider>(context, listen: false).setUser(
+            firstName: '',
+            lastName: '',
+            email: email,
+            password: password,
+            gender: ''
+        );
+
+        // Load the user data from Firestore
+        await Provider.of<UserProvider>(context, listen: false).loadUserData();
+      }
+
+      // Navigate to home screen
+      Navigator.pushReplacementNamed(context, '/home');
+    }
   }
 
   @override
@@ -234,13 +270,34 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!formKey.currentState!.validate()) return;
     try {
       DialogUtils.showLoading(context);
+
+      // Authenticate with Firebase
       final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text,
         password: passwordController.text,
       );
+
+      // Save login state and credentials to SharedPreferences
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userEmail', emailController.text);
+      await prefs.setString('userPassword', passwordController.text);
+
+      // Save user data to provider
+      Provider.of<UserProvider>(context, listen: false)
+          .setUser(
+          firstName: '',
+          lastName: '',
+          email: emailController.text,
+          password: passwordController.text,
+          gender: ''
+      );
+
+      // Load the user data from Firestore
+      await Provider.of<UserProvider>(context, listen: false).loadUserData();
+
       DialogUtils.hideLoading(context);
       Navigator.pushReplacementNamed(context, '/home');
-
     } on FirebaseAuthException catch (e) {
       DialogUtils.hideLoading(context);
       if (e.code == 'user-not-found') {
@@ -253,5 +310,19 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
   }
+}
 
+// Add this logout method in your profile or settings screen
+Future<void> logout(BuildContext context) async {
+  // Clear SharedPreferences login state
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isLoggedIn', false);
+  await prefs.remove('userEmail');
+  await prefs.remove('userPassword');
+
+  // Sign out from Firebase Auth
+  await FirebaseAuth.instance.signOut();
+
+  // Navigate back to login screen
+  Navigator.pushReplacementNamed(context, '/login');
 }

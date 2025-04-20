@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/dialog_utils.dart';
+import '../../../utils/providers/user_provider.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -11,10 +13,12 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final TextEditingController userNameController = TextEditingController();
+  final TextEditingController firstNameController = TextEditingController();
+  final TextEditingController lastNameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController rePasswordController = TextEditingController();
+  String? selectedGender;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
   @override
@@ -63,15 +67,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(height: 32),
                       buildTextField(
-                        controller: userNameController,
-                        hintText: 'Username',
+                        controller: firstNameController,
+                        hintText: 'First Name',
                         prefixIcon: Icons.person_outline,
-                        validator: (text) {
-                          if (text == null || text.trim().isEmpty) {
-                            return "Please Enter a Valid Name";
-                          }
-                          return null;
-                        },
+                        validator: (text) => text == null || text.trim().isEmpty
+                            ? "Enter First Name"
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      buildTextField(
+                        controller: lastNameController,
+                        hintText: 'Last Name',
+                        prefixIcon: Icons.person_outline,
+                        validator: (text) => text == null || text.trim().isEmpty
+                            ? "Enter Last Name"
+                            : null,
                       ),
                       const SizedBox(height: 16),
                       buildTextField(
@@ -99,7 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         isPassword: true,
                         validator: (text) {
                           if (text == null || text.length < 6) {
-                            return "Please Enter a Valid Password";
+                            return "Please Enter a Valid Password (min 6 characters)";
                           }
                           return null;
                         },
@@ -119,6 +129,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           }
                           return null;
                         },
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F5F0),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: DropdownButtonFormField<String>(
+                          value: selectedGender,
+                          hint: const Text('Select Gender'),
+                          items: ['Male', 'Female']
+                              .map((gender) => DropdownMenuItem(
+                            value: gender,
+                            child: Text(gender),
+                          ))
+                              .toList(),
+                          onChanged: (value) =>
+                              setState(() => selectedGender = value),
+                          validator: (value) =>
+                          value == null ? 'Please select a gender' : null,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            icon: Icon(Icons.wc),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 24),
                       buildButton(
@@ -239,31 +275,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> registerAccount() async {
+    // First validate the form
     if (!formKey.currentState!.validate()) return;
 
+    // Show loading indicator
     DialogUtils.showLoading(context);
 
     try {
+      // Create user in Firebase Authentication
       final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text,
       );
+
+      // Update UserProvider with user data
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      userProvider.setUser(
+        firstName: firstNameController.text.trim(),
+        lastName: lastNameController.text.trim(),
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+        gender: selectedGender!,
+      );
+
+      // Save user data to Firestore
+      // await userProvider.saveUserToFirestore(userCredential.user!.uid);
+
+      // Hide loading indicator
       DialogUtils.hideLoading(context);
+
       // Navigate to home screen
       Navigator.pushReplacementNamed(context, '/home');
-
     } on FirebaseAuthException catch (e) {
       DialogUtils.hideLoading(context);
       if (e.code == 'weak-password') {
         DialogUtils.showError(context, 'The password provided is too weak.');
       } else if (e.code == 'email-already-in-use') {
-        DialogUtils.showError(context, 'An account already exists for that email.');
+        DialogUtils.showError(
+            context, 'An account already exists for that email.');
       } else {
         DialogUtils.showError(context, 'Registration failed: ${e.message}');
       }
     } catch (e) {
       DialogUtils.hideLoading(context);
-      DialogUtils.showError(context, 'Something went wrong. Please try again later.');
+      DialogUtils.showError(
+          context, 'Something went wrong. Please try again later.');
     }
   }
 }

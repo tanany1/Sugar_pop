@@ -1,3 +1,4 @@
+import 'package:diabetes/screens/food/food_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/hive_model.dart';
 import '../logEntry/log_entry_screen.dart';
+import '../medicine/medicine_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Box<BloodSugarReading> readingsBox;
+  int _currentIndex = 0; // Track the current tab index
 
   @override
   void initState() {
@@ -42,6 +45,29 @@ class _HomeScreenState extends State<HomeScreen> {
     return readings.take(3).toList();
   }
 
+  // Method to handle tab navigation
+  void _onTabTapped(int index) {
+    if (index == _currentIndex) return; // Avoid rebuilding if already on the tab
+
+    if (index == 0) {
+      setState(() {
+        _currentIndex = index;
+      });
+    } else if (index == 1) {
+      // Navigate to Meals screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const FoodScreen()),
+      );
+    } else if (index == 2) {
+      // Navigate to Medicine screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const MedicineScreen()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -54,14 +80,23 @@ class _HomeScreenState extends State<HomeScreen> {
               // Header
               Row(
                 children: [
-                  const Center(
-                    child: Text(
-                      'Sugar Pop',
-                      style: TextStyle(
-                        fontSize: 28,
-                        color: AppColors.textColor,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  InkWell(
+                    onTap: (){
+                      Navigator.pushNamed(context, '/profile');
+                    },
+                    child: const Icon(
+                      Icons.person,
+                      size: 35,
+                      color: AppColors.accentColor,
+                    ),
+                  ),
+                  const SizedBox(width: 15,),
+                  const Text(
+                    'Sugar Pop',
+                    style: TextStyle(
+                      fontSize: 28,
+                      color: AppColors.textColor,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const Spacer(),
@@ -170,47 +205,73 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 8),
 
               // Reading cards
-              ...getRecentReadings()
-                  .map((reading) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Container(
-                          height: 80,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary1,
-                            borderRadius: BorderRadius.circular(12),
+              Expanded(
+                child: ListView(
+                  children: getRecentReadings()
+                      .map((reading) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Container(
+                      height: 80,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary1,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${reading.value} mg/dL',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textColor,
+                            ),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${reading.value} mg/dL',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.textColor,
-                                ),
-                              ),
-                              Text(
-                                _formatDateTime(reading.timestamp),
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  color: AppColors.textColor,
-                                ),
-                              ),
-                            ],
+                          Text(
+                            _formatDateTime(reading.timestamp),
+                            style: const TextStyle(
+                              fontSize: 20,
+                              color: AppColors.textColor,
+                            ),
                           ),
-                        ),
-                      ))
-                  .toList(),
+                        ],
+                      ),
+                    ),
+                  ))
+                      .toList(),
+                ),
+              ),
             ],
           ),
         ),
       ),
+      // Bottom Navigation Bar
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: _onTabTapped,
+        backgroundColor: AppColors.primary1,
+        selectedItemColor: AppColors.accentColor,
+        unselectedItemColor: AppColors.textColor.withOpacity(0.6),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.restaurant_menu),
+            label: 'Meals',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.medical_services),
+            label: 'Medicine',
+          ),
+        ],
+      ),
       floatingActionButton: Align(
         alignment: Alignment.bottomRight,
         child: Padding(
-          padding: const EdgeInsets.only(left: 32.0),
+          padding: const EdgeInsets.only(left: 32.0, bottom: 20.0), // Added bottom padding to avoid overlap with nav bar
           child: FloatingActionButton(
             backgroundColor: AppColors.primary3,
             foregroundColor: AppColors.primary1,
@@ -300,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
             child:
-                const Text('Save', style: TextStyle(color: AppColors.primary3)),
+            const Text('Save', style: TextStyle(color: AppColors.primary3)),
           ),
         ],
         backgroundColor: AppColors.primary1,
