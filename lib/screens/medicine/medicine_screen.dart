@@ -110,20 +110,90 @@ class _MedicineScreenState extends State<MedicineScreen> {
     'losartan': {
       'insulin aspart': 'Losartan increases effects of insulin aspart. Concomitant use of insulin and ARBs may require insulin dosage adjustment and increased glucose monitoring.',
     },
+    // Add common medicine aliases to improve matching
+    'lipitor': {
+      'glipizide': 'May enhance hypoglycemic effect (rare, but possible).',
+      'glimepiride': 'May enhance hypoglycemic effect (rare, but possible).',
+      'insulin': 'Generally safe, but high-dose statins may increase insulin resistance.',
+      'metformin': 'Generally safe, but high-dose statins may increase insulin resistance.',
+    },
+    'zocor': {
+      'glipizide': 'May enhance hypoglycemic effect (rare, but possible).',
+      'glimepiride': 'May enhance hypoglycemic effect (rare, but possible).',
+      'insulin': 'Generally safe, but high-dose statins may increase insulin resistance.',
+      'metformin': 'Generally safe, but high-dose statins may increase insulin resistance.',
+    },
+    'insulin': {
+      'aspirin': 'Aspirin increases effects of insulin by pharmacodynamic synergism. High doses of salicylates may increase risk for hypoglycemia.',
+      'statins': 'Generally safe, but high-dose statins may increase insulin resistance.',
+      'fibrates': 'May enhance hypoglycemic effect, increasing risk of low blood sugar.',
+      'niacin': 'Can worsen glycemic control by reducing glucose tolerance; may increase blood glucose levels.',
+    },
+    'metformin': {
+      'statins': 'Generally safe, but high-dose statins may increase insulin resistance.',
+      'niacin': 'Can worsen glycemic control by reducing glucose tolerance; may increase blood glucose levels.',
+      'bile acid sequestrants': 'Can reduce the absorption of oral antidiabetic drugs - timing of administration should be managed carefully.',
+      'omeprazole': 'Long-term use can lead to Vitamin B12 deficiency, which might affect Metformin\'s efficacy.',
+      'amlodipine': 'Amlodipine decreases effects of metformin by pharmacodynamic antagonism. Patient should be closely observed for loss of blood glucose control.',
+    },
   };
 
-  // Check if two medicines are incompatible
+  // Common brand-generic mappings
+  final Map<String, String> _medicineAliases = {
+    'lipitor': 'atorvastatin',
+    'zocor': 'simvastatin',
+    'lopid': 'gemfibrozil',
+    'tricor': 'fenofibrate',
+    'glucotrol': 'glipizide',
+    'amaryl': 'glimepiride',
+    'diabeta': 'glyburide',
+    'glucophage': 'metformin',
+    'prilosec': 'omeprazole',
+    'nexium': 'esomeprazole',
+    'prevacid': 'lansoprazole',
+    'aciphex': 'rabeprazole',
+    'inderal': 'propranolol',
+    'norvasc': 'amlodipine',
+    'cozaar': 'losartan',
+    'bayer': 'aspirin',
+    'advil': 'ibuprofen',
+    'tylenol': 'acetaminophen',
+    'motrin': 'ibuprofen',
+  };
+
+  // More robust medicine incompatibility check
   String? _checkIncompatibility(String medicine1, String medicine2) {
+    // Skip if either medicine is empty
+    if (medicine1.isEmpty || medicine2.isEmpty) {
+      return null;
+    }
+
     medicine1 = medicine1.toLowerCase().trim();
     medicine2 = medicine2.toLowerCase().trim();
 
-    // Check direct incompatibility
+    // Map brand names to generic names when possible
+    String genericMed1 = _medicineAliases[medicine1] ?? medicine1;
+    String genericMed2 = _medicineAliases[medicine2] ?? medicine2;
+
+    // Check direct incompatibility with generic names
+    if (_incompatibilityDatabase.containsKey(genericMed1) &&
+        _incompatibilityDatabase[genericMed1]!.containsKey(genericMed2)) {
+      return _incompatibilityDatabase[genericMed1]![genericMed2];
+    }
+
+    // Check reverse incompatibility with generic names
+    if (_incompatibilityDatabase.containsKey(genericMed2) &&
+        _incompatibilityDatabase[genericMed2]!.containsKey(genericMed1)) {
+      return _incompatibilityDatabase[genericMed2]![genericMed1];
+    }
+
+    // Also try with original names (in case our alias mapping doesn't cover it)
     if (_incompatibilityDatabase.containsKey(medicine1) &&
         _incompatibilityDatabase[medicine1]!.containsKey(medicine2)) {
       return _incompatibilityDatabase[medicine1]![medicine2];
     }
 
-    // Check reverse incompatibility
+    // Check reverse with original names
     if (_incompatibilityDatabase.containsKey(medicine2) &&
         _incompatibilityDatabase[medicine2]!.containsKey(medicine1)) {
       return _incompatibilityDatabase[medicine2]![medicine1];
@@ -150,11 +220,16 @@ class _MedicineScreenState extends State<MedicineScreen> {
       return;
     }
 
+    // Log for debugging
+    debugPrint('Checking compatibility between: $medicine1 and $medicine2');
+
     String? incompatibilityWarning = _checkIncompatibility(medicine1, medicine2);
 
     if (incompatibilityWarning != null) {
-      _showIncompatibilityDialog(incompatibilityWarning);
+      debugPrint('Found incompatibility: $incompatibilityWarning');
+      _showIncompatibilityDialog(medicine1, medicine2, incompatibilityWarning);
     } else {
+      debugPrint('No incompatibility found');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -167,11 +242,12 @@ class _MedicineScreenState extends State<MedicineScreen> {
     }
   }
 
-  void _showIncompatibilityDialog(String warning) {
+  void _showIncompatibilityDialog(String med1, String med2, String warning) {
     bool expanded = false;
 
     showDialog(
       context: context,
+      barrierDismissible: false, // Make sure dialog doesn't dismiss on outside tap
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setState) {
@@ -197,6 +273,15 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    'Interaction detected between ${med1.capitalize()} and ${med2.capitalize()}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: AppColors.textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   const Text(
                     'Check with your doctor',
                     style: TextStyle(
@@ -387,5 +472,13 @@ class _MedicineScreenState extends State<MedicineScreen> {
         ),
       ),
     );
+  }
+}
+
+// Extension to capitalize first letter of a string
+extension StringExtension on String {
+  String capitalize() {
+    if (isEmpty) return this;
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 }

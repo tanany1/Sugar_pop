@@ -8,7 +8,6 @@ import 'package:diabetes/screens/profile/profile_screen.dart';
 import 'package:diabetes/screens/splash/splash_screen.dart';
 import 'package:diabetes/screens/tips/tips_screen.dart';
 import 'package:diabetes/utils/hive_model.dart';
-import 'package:diabetes/utils/notification_service.dart';
 import 'package:diabetes/utils/providers/user_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -19,11 +18,11 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // await NotificationService.init();
   await Hive.initFlutter();
   Hive.registerAdapter(BloodSugarReadingAdapter());
   await Hive.openBox<BloodSugarReading>('readings');
   await Hive.openBox('medications');
+  await Hive.openBox('user_data');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

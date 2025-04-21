@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../../utils/providers/user_provider.dart';
 import '../../utils/app_colors.dart';
 
@@ -16,52 +15,14 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool isPasswordVisible = false;
   final TextEditingController medicineNameController = TextEditingController();
-  final _medicationsBox = Hive.box('medications');
 
   @override
   void initState() {
     super.initState();
-    _loadMedications();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<UserProvider>(context, listen: false).loadMedications();
+    });
   }
-
-  Future<void> _loadMedications() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId != null) {
-      final userMedications = _medicationsBox.get(userId, defaultValue: []);
-      if (userMedications != null) {
-        final userProvider = Provider.of<UserProvider>(context, listen: false);
-        for (var med in userMedications) {
-          final medication = Medication(
-            id: med['id'],
-            name: med['name'],
-            time: TimeOfDay(hour: med['hour'], minute: med['minute']),
-          );
-          userProvider.addMedication(medication);
-        }
-      }
-    }
-  }
-
-  Future<void> _saveMedication(Medication medication, String userId) async {
-    final existingMedications = _medicationsBox.get(userId, defaultValue: []) ?? [];
-
-    final medData = {
-      'id': medication.id,
-      'name': medication.name,
-      'hour': medication.time.hour,
-      'minute': medication.time.minute,
-    };
-
-    existingMedications.add(medData);
-    await _medicationsBox.put(userId, existingMedications);
-  }
-
-  Future<void> _deleteMedication(String id, String userId) async {
-    final existingMedications = _medicationsBox.get(userId, defaultValue: []) ?? [];
-    existingMedications.removeWhere((med) => med['id'] == id);
-    await _medicationsBox.put(userId, existingMedications);
-  }
-
   Future<void> _showLogoutConfirmationDialog() async {
     return showDialog<void>(
       context: context,
@@ -80,10 +41,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
             TextButton(
               child: const Text('Log Out', style: TextStyle(color: Colors.red)),
               onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-                Provider.of<UserProvider>(context, listen: false).clearUser();
-                Navigator.of(context).pop(); // Close dialog
-                Navigator.pushReplacementNamed(context, '/login');
+                try {
+                  // First close the dialog
+                  Navigator.of(context).pop();
+
+                  // Show loading indicator
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Logging out...")),
+                  );
+
+                  // Sign out from Firebase
+                  await FirebaseAuth.instance.signOut();
+
+                  // Clear user data in provider
+                  if (mounted) {
+                    Provider.of<UserProvider>(context, listen: false)
+                        .clearUser();
+                  }
+
+                  // Navigate to login screen - using pushNamedAndRemoveUntil to clear navigation stack
+                  if (mounted) {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/login',
+                      (route) => false, // This clears the navigation stack
+                    );
+                  }
+                } catch (e) {
+                  // Handle any errors during logout
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text("Error logging out: ${e.toString()}")),
+                    );
+                  }
+                }
               },
             ),
           ],
@@ -119,7 +111,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 16),
               Text(
                 '${user.firstName} ${user.lastName}',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 24),
               buildProfileInfoField(label: 'Email', value: user.email),
@@ -128,7 +121,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: user.password,
                 isPassword: true,
                 isPasswordVisible: isPasswordVisible,
-                onVisibilityToggle: () => setState(() => isPasswordVisible = !isPasswordVisible),
+                onVisibilityToggle: () =>
+                    setState(() => isPasswordVisible = !isPasswordVisible),
               ),
               buildProfileInfoField(label: 'Gender', value: user.gender),
               const SizedBox(height: 24),
@@ -174,7 +168,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             if (isPassword && onVisibilityToggle != null)
               IconButton(
-                icon: Icon(isPasswordVisible ? Icons.visibility_off : Icons.visibility),
+                icon: Icon(isPasswordVisible
+                    ? Icons.visibility_off
+                    : Icons.visibility),
                 onPressed: onVisibilityToggle,
               ),
           ],
@@ -184,8 +180,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget buildMedicationSection(UserProvider user) {
-    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -194,12 +188,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'My Medications',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+            const Row(
+              children: [
+                Icon(Icons.medication, color: AppColors.primary3),
+                SizedBox(width: 8),
+                Text(
+                  'My Medications',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -222,24 +222,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     color: Colors.grey[100],
                     child: ListTile(
+                      leading: const Icon(Icons.notifications_active,
+                          color: AppColors.primary3),
                       title: Text(medication.name),
                       subtitle: Text(
                         'Reminder: ${medication.time.format(context)}',
                       ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () async {
-                          await user.removeMedication(medication.id);
-                          await _deleteMedication(medication.id, userId);
-                        },
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () async {
+                              final time = await showTimePicker(
+                                context: context,
+                                initialTime: medication.time,
+                              );
+
+                              if (time != null) {
+                                // Remove old medication
+                                await user.removeMedication(medication.id);
+
+                                // Add new medication with updated time
+                                final newMedication = Medication(
+                                  id: medication.id,
+                                  name: medication.name,
+                                  time: time,
+                                );
+
+                                await user.addMedication(newMedication);
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text("Medication time updated")),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () async {
+                              // Show confirmation dialog
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text("Delete Medication"),
+                                  content: Text(
+                                      "Are you sure you want to remove ${medication.name}?"),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text("Cancel"),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text("Delete",
+                                          style: TextStyle(color: Colors.red)),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirmed == true) {
+                                await user.removeMedication(medication.id);
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text("Medication removed")),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   );
                 },
               ),
-
-            const SizedBox(height: 16),
-
             // Add new medication form
             Container(
               padding: const EdgeInsets.all(16),
@@ -250,12 +316,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Add New Medication',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                  const Row(
+                    children: [
+                      Icon(Icons.add_circle, color: AppColors.primary3),
+                      SizedBox(width: 8),
+                      Text(
+                        'Add New Medication',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -285,7 +357,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onPressed: () async {
                         if (medicineNameController.text.trim().isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Please enter medication name")),
+                            const SnackBar(
+                                content: Text("Please enter medication name")),
                           );
                           return;
                         }
@@ -303,20 +376,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             id: medicationId,
                           );
 
-                          // Add medication to provider
-                          await Provider.of<UserProvider>(context, listen: false)
+                          // Add medication to provider (which will also save to Hive and schedule notification)
+                          await Provider.of<UserProvider>(context,
+                                  listen: false)
                               .addMedication(medication);
-
-                          // Save to Hive
-                          await _saveMedication(medication, userId);
 
                           medicineNameController.clear();
 
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Medication added successfully")),
-                            );
-                          }
+                          // if (mounted) {
+                          //   ScaffoldMessenger.of(context).showSnackBar(
+                          //   //   const SnackBar(
+                          //   //       // content: Text(
+                          //   //       //     "Medication added with notification at ${time.format(context)}")),
+                          //   // );
+                          // }
                         }
                       },
                       child: const Row(
@@ -327,7 +400,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             size: 20,
                             color: Colors.white,
                           ),
-                          SizedBox(width: 10,),
+                          SizedBox(
+                            width: 10,
+                          ),
                           Text('Add Medication'),
                         ],
                       ),

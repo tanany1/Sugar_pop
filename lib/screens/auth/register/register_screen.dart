@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/dialog_utils.dart';
 import '../../../utils/providers/user_provider.dart';
@@ -20,6 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController rePasswordController = TextEditingController();
   String? selectedGender;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  final _userDataBox = Hive.box('user_data');
 
   @override
   Widget build(BuildContext context) {
@@ -146,8 +148,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             child: Text(gender),
                           ))
                               .toList(),
-                          onChanged: (value) =>
-                              setState(() => selectedGender = value),
+                          onChanged: (value) {
+                            setState(() => selectedGender = value);
+                            // Debug message to check if the gender is being set
+                            print('Selected gender: $selectedGender');
+                          },
                           validator: (value) =>
                           value == null ? 'Please select a gender' : null,
                           decoration: const InputDecoration(
@@ -278,6 +283,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     // First validate the form
     if (!formKey.currentState!.validate()) return;
 
+    // Explicitly check gender selection
+    if (selectedGender == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a gender")),
+      );
+      return;
+    }
+
     // Show loading indicator
     DialogUtils.showLoading(context);
 
@@ -288,18 +301,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: passwordController.text,
       );
 
-      // Update UserProvider with user data
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      userProvider.setUser(
-        firstName: firstNameController.text.trim(),
-        lastName: lastNameController.text.trim(),
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-        gender: selectedGender!,
-      );
+      final userId = userCredential.user!.uid;
 
-      // Save user data to Firestore
-      // await userProvider.saveUserToFirestore(userCredential.user!.uid);
+      // Debug print to verify gender value
+      print('About to save gender: $selectedGender');
+
+      // Save user data to Hive
+      await _userDataBox.put('$userId-firstName', firstNameController.text.trim());
+      await _userDataBox.put('$userId-lastName', lastNameController.text.trim());
+      await _userDataBox.put('$userId-email', emailController.text.trim());
+      await _userDataBox.put('$userId-password', passwordController.text.trim());
+      await _userDataBox.put('$userId-gender', selectedGender);
+
+      // Verify what was saved to Hive
+      print('Saved to Hive: ${_userDataBox.get('$userId-gender')}');
+
+      // Ensure the selected gender is not null before updating UserProvider
+      if (selectedGender != null) {
+        // Update UserProvider with user data
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        userProvider.setUser(
+          firstName: firstNameController.text.trim(),
+          lastName: lastNameController.text.trim(),
+          email: emailController.text.trim(),
+          password: passwordController.text.trim(),
+          gender: selectedGender!,
+        );
+      } else {
+        // This should not happen due to validation, but as an extra safety measure
+        print('Error: Gender is null when trying to update UserProvider');
+        DialogUtils.hideLoading(context);
+        DialogUtils.showError(context, 'Registration failed: Gender selection is required.');
+        return;
+      }
 
       // Hide loading indicator
       DialogUtils.hideLoading(context);
@@ -317,6 +351,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         DialogUtils.showError(context, 'Registration failed: ${e.message}');
       }
     } catch (e) {
+      print('Registration error: $e');
       DialogUtils.hideLoading(context);
       DialogUtils.showError(
           context, 'Something went wrong. Please try again later.');

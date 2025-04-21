@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -40,17 +40,17 @@ class _LoginScreenState extends State<LoginScreen> {
       final String? password = prefs.getString('userPassword');
 
       if (email != null && password != null) {
-        // Optionally restore credentials to provider
-        Provider.of<UserProvider>(context, listen: false).setUser(
-            firstName: '',
-            lastName: '',
-            email: email,
-            password: password,
-            gender: ''
+        // Only set email and password in provider, other data will be loaded from Hive
+        Provider.of<UserProvider>(context, listen: false).setEmailAndPassword(
+          email: email,
+          password: password,
         );
 
-        // Load the user data from Firestore
-        await Provider.of<UserProvider>(context, listen: false).loadUserData();
+        // Load the user data from Hive
+        // await Provider.of<UserProvider>(context, listen: false).loadUserData();
+
+        // Also load medications
+        await Provider.of<UserProvider>(context, listen: false).loadMedications();
       }
 
       // Navigate to home screen
@@ -283,18 +283,18 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('userEmail', emailController.text);
       await prefs.setString('userPassword', passwordController.text);
 
-      // Save user data to provider
+      // Save user data to provider (only email and password)
       Provider.of<UserProvider>(context, listen: false)
-          .setUser(
-          firstName: '',
-          lastName: '',
-          email: emailController.text,
-          password: passwordController.text,
-          gender: ''
+          .setEmailAndPassword(
+        email: emailController.text,
+        password: passwordController.text,
       );
 
-      // Load the user data from Firestore
-      await Provider.of<UserProvider>(context, listen: false).loadUserData();
+      // Load the user data from Hive
+      // await Provider.of<UserProvider>(context, listen: false).loadUserData();
+
+      // Also load medications
+      await Provider.of<UserProvider>(context, listen: false).loadMedications();
 
       DialogUtils.hideLoading(context);
       Navigator.pushReplacementNamed(context, '/home');
