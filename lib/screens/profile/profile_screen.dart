@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../utils/providers/user_provider.dart';
 import '../../utils/app_colors.dart';
+import '../../services/notification_service.dart'; // Import the notification service
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,6 +19,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool isPasswordVisible = false;
+  Timer? _minuteTimer;
   final TextEditingController medicineNameController = TextEditingController();
 
   @override
@@ -21,8 +27,137 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<UserProvider>(context, listen: false).loadMedications();
+      _checkMedicationTime(); // Ensure this gets called after medications are loaded
+    });
+    _minuteTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted) {
+        setState(() {});
+      }
     });
   }
+  @override
+  void dispose() {
+    _minuteTimer?.cancel();
+    super.dispose();
+  }
+
+  void _checkMedicationTime() {
+    final medications = Provider.of<UserProvider>(context, listen: false).medications;
+    final now = DateTime.now();
+
+    for (var medication in medications) {
+      // Create DateTime for medication time today
+      final medicationTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        medication.time.hour,
+        medication.time.minute,
+      );
+
+      // Check if within a 2-minute window of medication time
+      final difference = now.difference(medicationTime).inMinutes.abs();
+
+      // Send a notification if we're within 2 minutes of medication time
+      if (difference <= 2) {
+        final reminderKey = '${medication.id}_${now.day}_${medication.time.hour}_${medication.time.minute}';
+
+        // Use shared preferences to track sent notifications
+        SharedPreferences.getInstance().then((prefs) {
+          if (prefs.getBool(reminderKey) != true) {
+            // Mark as sent
+            prefs.setBool(reminderKey, true);
+
+            // Remove the marker after 3 minutes
+            Future.delayed(const Duration(minutes: 3), () {
+              prefs.remove(reminderKey);
+            });
+
+            // Send an immediate notification instead of showing a dialog
+            _sendImmediateMedicationNotification(medication);
+          }
+        });
+      }
+    }
+  }
+
+// Track which medication reminders have been shown to prevent duplicates
+  void _sendImmediateMedicationNotification(Medication medication) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'medication_reminders_immediate',
+      'Immediate Medication Reminders',
+      channelDescription: 'Immediate notifications for medication reminders',
+      importance: Importance.max,
+      priority: Priority.high,
+      fullScreenIntent: true,
+      // category: 'alarm',
+      visibility: NotificationVisibility.public,
+      enableVibration: true,
+      playSound: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: 'default',
+      interruptionLevel: InterruptionLevel.timeSensitive,
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    // Generate a unique ID for this immediate notification
+    final int notificationId = '${medication.id}_immediate_${DateTime.now().millisecondsSinceEpoch}'.hashCode;
+
+    try {
+      await LocalNotificationService.flutterLocalNotificationsPlugin.show(
+        notificationId,
+        'Medication Reminder',
+        'Time to take ${medication.name}',
+        details,
+      );
+
+      print('Sent immediate notification for ${medication.name}');
+    } catch (e) {
+      print('Error sending immediate notification: $e');
+    }
+  }
+  // void _showMedicationReminder(Medication medication) {
+  //   // Check if we've already shown this reminder in the last few minutes
+  //   final String reminderKey = '${medication.id}_${DateTime.now().day}_${DateTime.now().hour}_${DateTime.now().minute}';
+  //
+  //   if (!_shownReminders.contains(reminderKey)) {
+  //     _shownReminders.add(reminderKey);
+  //
+  //     // Remove the reminder key after a few minutes to allow showing again next day
+  //     Future.delayed(const Duration(minutes: 5), () {
+  //       _shownReminders.remove(reminderKey);
+  //     });
+  //
+  //     // Show the actual reminder
+  //     WidgetsBinding.instance.addPostFrameCallback((_) {
+  //       if (mounted) {
+  //         showDialog(
+  //           context: context,
+  //           builder: (context) => AlertDialog(
+  //             title: const Text("Medication Reminder"),
+  //             content: Text("It's time to take ${medication.name}"),
+  //             actions: [
+  //               TextButton(
+  //                 onPressed: () => Navigator.pop(context),
+  //                 child: const Text("OK"),
+  //               ),
+  //             ],
+  //           ),
+  //         );
+  //       }
+  //     });
+  //   }
+  // }
+
   Future<void> _showLogoutConfirmationDialog() async {
     return showDialog<void>(
       context: context,
@@ -64,7 +199,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Navigator.pushNamedAndRemoveUntil(
                       context,
                       '/login',
-                      (route) => false, // This clears the navigation stack
+                          (route) => false, // This clears the navigation stack
                     );
                   }
                 } catch (e) {
@@ -112,7 +247,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Text(
                 '${user.firstName} ${user.lastName}',
                 style:
-                    const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 24),
               buildProfileInfoField(label: 'Email', value: user.email),
@@ -218,9 +353,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 itemCount: user.medications.length,
                 itemBuilder: (context, index) {
                   final medication = user.medications[index];
+
+                  // Check if it's exactly medication time
+                  final now = TimeOfDay.now();
+                  final isMedicationTimeNow = now.hour == medication.time.hour && now.minute == medication.time.minute;
+
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
-                    color: Colors.grey[100],
+                    color: isMedicationTimeNow
+                        ? Colors.green[100]
+                        : Colors.grey[100],
                     child: ListTile(
                       leading: const Icon(Icons.notifications_active,
                           color: AppColors.primary3),
@@ -240,6 +382,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               );
 
                               if (time != null) {
+                                // Cancel the old notification
+                                await LocalNotificationService.cancelMedicationReminder(
+                                    medication.id);
+
                                 // Remove old medication
                                 await user.removeMedication(medication.id);
 
@@ -252,11 +398,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                                 await user.addMedication(newMedication);
 
+                                // Schedule new notification
+                                await LocalNotificationService.scheduleMedicationReminder(
+                                  newMedication.id,
+                                  newMedication.name,
+                                  newMedication.time,
+                                );
+
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                         content:
-                                            Text("Medication time updated")),
+                                        Text("Medication time updated")),
                                   );
                                 }
                               }
@@ -289,6 +442,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               );
 
                               if (confirmed == true) {
+                                // Cancel notification first
+                                await LocalNotificationService.cancelMedicationReminder(
+                                    medication.id);
+
+                                // Then remove medication
                                 await user.removeMedication(medication.id);
 
                                 if (mounted) {
@@ -376,20 +534,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             id: medicationId,
                           );
 
-                          // Add medication to provider (which will also save to Hive and schedule notification)
-                          await Provider.of<UserProvider>(context,
-                                  listen: false)
+                          // Add medication to provider
+                          await Provider.of<UserProvider>(context, listen: false)
                               .addMedication(medication);
+
+                          // Schedule notification
+                          await LocalNotificationService.scheduleMedicationReminder(
+                            medicationId,
+                            medication.name,
+                            time,
+                          );
 
                           medicineNameController.clear();
 
-                          // if (mounted) {
-                          //   ScaffoldMessenger.of(context).showSnackBar(
-                          //   //   const SnackBar(
-                          //   //       // content: Text(
-                          //   //       //     "Medication added with notification at ${time.format(context)}")),
-                          //   // );
-                          // }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(
+                                      "Medication added with reminder at ${time.format(context)}")),
+                            );
+                          }
                         }
                       },
                       child: const Row(

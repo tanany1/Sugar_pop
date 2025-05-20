@@ -7,6 +7,7 @@ import 'package:diabetes/screens/medicine/medicine_screen.dart';
 import 'package:diabetes/screens/profile/profile_screen.dart';
 import 'package:diabetes/screens/splash/splash_screen.dart';
 import 'package:diabetes/screens/tips/tips_screen.dart';
+import 'package:diabetes/services/notification_service.dart';
 import 'package:diabetes/utils/hive_model.dart';
 import 'package:diabetes/utils/providers/user_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -26,6 +27,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await LocalNotificationService.init();
   runApp(
     MultiProvider(
       providers: [
